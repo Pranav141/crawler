@@ -12,6 +12,8 @@ import java.util.*;
 public class Crawler {
     public static Set<String> hs = new HashSet<>();
     public static Map<String,Rules> hm= new HashMap<>();
+    public static Map<String,Integer> dict ;
+
     public static void setRobotsText(String url) throws IOException {
         Document doc = Jsoup.connect(url+"robots.txt").get();
         String rawText = doc.wholeText();
@@ -50,47 +52,81 @@ public class Crawler {
     }
 
 
-    public static void crawl(String url,int depth) throws IOException {
+    public static void crawl(String url,int depth,TextProcessor textProcessor) throws IOException {
         if(hs.contains(url) || depth >1){
             return;
         }
         Document doc = Jsoup.connect(url).get();
         hs.add(url);
+        System.out.println(url);
+//        dict = textProcessor.process(doc.body().text(),url);
+
         int count = 0;
+
         Elements newsHeadlines = doc.getElementsByTag("a");
 
         for (Element headline : newsHeadlines) {
+            if(count>5){
+                break;
+            }
             String urlTemp = headline.absUrl("href");
             String shortUrl = headline.attr("href");
             String title = headline.attr("title");
-            if(hm.get("*").getDisallowed().contains(shortUrl)){
-                System.out.println("link disallowed");
+            if(urlTemp.endsWith(".jpg") || shortUrl.equals("#")){
+                continue;
             }
-            if(urlTemp.startsWith("https://en.wikipedia.org/wiki/") && !urlTemp.endsWith(".jpg") && !shortUrl.equals("#")){
-                System.out.println((headline.attr("title")+" "+ shortUrl));
+            if(isAllowed(shortUrl) && urlTemp.startsWith("https://en.wikipedia.org") && !hs.contains(urlTemp)){
+                System.out.println(shortUrl);
                 count += 1;
+                crawl(urlTemp,depth+1,textProcessor);
             }
 
-//            crawl(urlTemp,depth+1);
         }
         System.out.println(newsHeadlines.size()+" "+count);
-        createDict(doc.body().text());
-//        System.out.println(doc.body().text()); /* Get the content from the website*/
-
-
     }
-    public static void createDict(String text){
-        Map<String,Integer> hm = new TreeMap<>();
-        String[] arr = text.split(" ");
-        for(String s : arr){
-            hm.put(s,hm.getOrDefault(s,0)+1);
+
+
+    public static boolean isAllowed(String path) {
+
+
+        Rules rules = hm.getOrDefault("PranavWikiCrawler", hm.get("*"));
+
+        if (rules == null) return true;
+
+        String bestMatch = null;
+        boolean allow = true;
+        for (String dis : rules.getDisallowed()) {
+
+            if (path.startsWith(dis)) {
+                if (bestMatch == null || dis.length() > bestMatch.length()) {
+                    bestMatch = dis;
+                    allow = false;
+                }
+            }
         }
 
+        for (String al : rules.getAllowed()) {
+            if (path.startsWith(al)) {
+                if (bestMatch == null || al.length() >= bestMatch.length()) {
+                    bestMatch = al;
+                    allow = true;
+                }
+            }
+        }
+        return allow;
     }
     static void main() throws IOException {
         setRobotsText("https://en.wikipedia.org/");
-        Crawler.crawl("https://en.wikipedia.org/",0);
+        TextProcessor textProcessor = new TextProcessor();
+        Crawler.crawl("https://en.wikipedia.org/",0,textProcessor);
 //        String temp = "https://en.wikipedia.org";
 //        System.out.println(temp.length());
+        Iterator<Map.Entry<String,Integer>> iterator =dict.entrySet().iterator();
+        while(iterator.hasNext()){
+            Map.Entry<String, Integer> entry = iterator.next();
+            System.out.println(entry.getKey() + " = " + entry.getValue());
+        }
+
     }
 }
+
