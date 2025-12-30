@@ -10,10 +10,12 @@ import java.io.IOException;
 import java.util.*;
 
 public class Crawler {
-    public static Set<String> hs = new HashSet<>();
+    public static Set<String> hs;
     public static Map<String,Rules> hm= new HashMap<>();
-    public static Map<String,Integer> dict ;
-
+//    public static Map<String,Integer> dict ;
+    public static void loadVisitedUrl(){
+        hs = DBConn.loadVisitedUrl();
+    }
     public static void setRobotsText(String url) throws IOException {
         Document doc = Jsoup.connect(url+"robots.txt").get();
         String rawText = doc.wholeText();
@@ -53,26 +55,27 @@ public class Crawler {
 
 
     public static void crawl(String url,int depth,TextProcessor textProcessor) throws IOException {
-        if(hs.contains(url) || depth >1){
+        if(hs.contains(url) || depth >2){
+            System.out.println(url+" return from here");
             return;
         }
         Document doc = Jsoup.connect(url).get();
         hs.add(url);
         System.out.println(url);
-//        dict = textProcessor.process(doc.body().text(),url);
+        textProcessor.process(doc.body().text(),url);
 
         int count = 0;
 
         Elements newsHeadlines = doc.getElementsByTag("a");
 
         for (Element headline : newsHeadlines) {
-            if(count>5){
+            if(count>10){
                 break;
             }
             String urlTemp = headline.absUrl("href");
             String shortUrl = headline.attr("href");
             String title = headline.attr("title");
-            if(urlTemp.endsWith(".jpg") || shortUrl.equals("#")){
+            if(urlTemp.endsWith(".jpg") || shortUrl.contains("#")){
                 continue;
             }
             if(isAllowed(shortUrl) && urlTemp.startsWith("https://en.wikipedia.org") && !hs.contains(urlTemp)){
@@ -116,16 +119,14 @@ public class Crawler {
         return allow;
     }
     static void main() throws IOException {
+        DBConn.createConn();
         setRobotsText("https://en.wikipedia.org/");
         TextProcessor textProcessor = new TextProcessor();
+        loadVisitedUrl();
         Crawler.crawl("https://en.wikipedia.org/",0,textProcessor);
 //        String temp = "https://en.wikipedia.org";
 //        System.out.println(temp.length());
-        Iterator<Map.Entry<String,Integer>> iterator =dict.entrySet().iterator();
-        while(iterator.hasNext()){
-            Map.Entry<String, Integer> entry = iterator.next();
-            System.out.println(entry.getKey() + " = " + entry.getValue());
-        }
+
 
     }
 }

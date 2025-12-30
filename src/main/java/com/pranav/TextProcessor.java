@@ -16,10 +16,8 @@ public class TextProcessor {
     private final PorterStemmer stemmer = new PorterStemmer();
     private final SimpleTokenizer tokenizer = SimpleTokenizer.INSTANCE;
     public void process(String text,String url) {
-
-//        Map<String, Integer> termFrequency = new HashMap<>();
-        Map<String,List<TermFrequencyValue>> termFrequency = new HashMap<>();
-        HashSet<String> stringSet = new HashSet<>();
+        int count = 0;
+        Map<String,TermFrequencyValue> termFrequency = new HashMap<>();
         if (text == null || text.isEmpty()) {
             return ;
         }
@@ -41,6 +39,7 @@ public class TextProcessor {
             // 3. Remove short tokens
             if (token.length() < 2) continue;
 
+
             // 4. Stopword removal
             if (STOP_WORDS.contains(token)) continue;
 
@@ -50,12 +49,23 @@ public class TextProcessor {
             if (stemmed.isEmpty()) continue;
 
             // 6. Term Frequency
-//            termFrequency.put(
-//                    stemmed,
-//                    termFrequency.getOrDefault(stemmed, 0) + 1
-//            );
+            if(termFrequency.containsKey(stemmed)){
+                //update if present
+                TermFrequencyValue value = termFrequency.get(stemmed);
+                value.frequency = value.frequency+1;
+                value.positions.add(i);
+                termFrequency.put(stemmed,value);
+            }
+            else{
+                //create if not present
+                TermFrequencyValue value = new TermFrequencyValue(url);
+                value.frequency = 1;
+                value.positions.add(i);
+                termFrequency.put(stemmed,value);
+            }
+            count+=1;
         }
-        DBConn.ingestion(termFrequency,stringSet);
+        DBConn.ingestData(termFrequency,url,count);
         return ;
     }
 }
