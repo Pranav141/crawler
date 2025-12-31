@@ -92,7 +92,7 @@ public class DBConn {
 //        List<Document> result = new ArrayList<>();
 
         Map<ObjectId,Double> hm = new HashMap<>();
-        String term = "war";
+        String term = "softwar";
         Document document = collection.find(eq("_id",term)).first();
         List<Document> postings = document.get("postings",List.class);
         for(int i=0;i<postings.size();i++){
