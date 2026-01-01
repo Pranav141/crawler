@@ -9,10 +9,11 @@ import org.jsoup.select.Elements;
 import java.io.IOException;
 import java.util.*;
 
-public class Crawler {
+public class Crawler implements Runnable{
     public static Set<String> hs;
     public static Map<String,Rules> hm= new HashMap<>();
 //    public static Map<String,Integer> dict ;
+
     public static void loadVisitedUrl(){
         hs = DBConn.loadVisitedUrl();
     }
@@ -121,12 +122,17 @@ public class Crawler {
     static void main() throws IOException {
         DBConn.createConn();
         setRobotsText("https://en.wikipedia.org/");
-        TextProcessor textProcessor = new TextProcessor();
         loadVisitedUrl();
-        Crawler.crawl("https://en.wikipedia.org/",0,textProcessor);
+        TextProcessor textProcessor = new TextProcessor();
 //        String temp = "https://en.wikipedia.org";
 //        System.out.println(temp.length());
 
+        Crawler.crawl("https://en.wikipedia.org/",0,textProcessor);
+
+    }
+
+    @Override
+    public void run() {
 
     }
 }
