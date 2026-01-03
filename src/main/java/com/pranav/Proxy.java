@@ -19,4 +19,16 @@ public class Proxy {
                 ", protocol='" + protocol + '\'' +
                 '}';
     }
+
+    public String getIp() {
+        return ip;
+    }
+
+    public Integer getPort() {
+        return port;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
 }
