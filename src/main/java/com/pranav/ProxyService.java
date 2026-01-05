@@ -2,109 +2,95 @@ package com.pranav;
 
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
+import org.jsoup.helper.RequestAuthenticator;
 import org.jsoup.nodes.Document;
 
 import java.io.*;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.ResourceBundle;
-import java.util.Scanner;
+import java.net.PasswordAuthentication;
+import java.util.*;
+import java.util.concurrent.*;
 
 public class ProxyService {
-    public List<Proxy> proxyList;
-    public int counter;
-    public List<Proxy> workingProxy = new ArrayList<>();
-    public void loadProxy() throws NullPointerException,IOException {
+//    public List<Proxy> workingProxy = new ArrayList<>();
+    private Queue<Proxy> unTestedProxy = new ConcurrentLinkedQueue<>();
+    private Queue<Proxy> workingProxy = new ConcurrentLinkedQueue<>();
+//    private Set<Proxy> beingTested = ConcurrentHashMap.newKeySet();
+    private int NUM_TESTERS = 5;
+    private ScheduledExecutorService healthChecker = Executors.newScheduledThreadPool(NUM_TESTERS);
+    public void loadProxy() throws NullPointerException {
         try{
             InputStream file =  ProxyService.class.getClassLoader().getResourceAsStream("all-proxies.txt");
             BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(file));
             List<String> proxies = bufferedReader.lines().toList();
             System.out.println(proxies);
-            proxyList = new ArrayList<>();
             for (int i = 0; i < proxies.size(); i++) {
                 String[] splits = proxies.get(i).split(":");
-                String protocal = splits[0];
-                if(protocal.contains("socks")){
-                    continue;
-                }
-                String ip = splits[1].substring(2);
-                Integer port = Integer.parseInt(splits[2]);
-                Proxy proxy = new Proxy(ip,port,protocal);
-                proxyList.add(proxy);
+                String ip = splits[0];
+                Integer port = Integer.parseInt(splits[1]);
+                String username = splits[2];
+                String password = splits[3];
+                Proxy proxy = new Proxy(ip,port,username,password);
+                unTestedProxy.offer(proxy);
             }
-
         } catch (NullPointerException e) {
 
         }
 
     }
-//    public boolean textProxy(Proxy proxy) throws IOException {
-//        if(proxy.getProtocol().contains("socks")){
-//            System.setProperty("socksProxyHost", proxy.getIp());
-//            System.setProperty("socksProxyPort",proxy.getPort().toString());
-//            System.setProperty("java.net.useSystemProxies", "true");
-//
-//            try {
-//                org.jsoup.Connection.Response response = Jsoup.connect("https://whoer.net/")
-//                        .timeout(3000)
-//                        .execute();
-//                System.out.println(response.statusCode());
-//                Document doc = Jsoup.connect("https://whoer.net/").get();
-//                System.out.println(doc.text());
-//                if(response.statusCode() == 200){
-//                    return true;
-//                }
-//            } catch (IOException e) {
-//
-//            } finally {
-//                // Optional: Clear the properties if you need to make non-proxied connections later
-//                System.clearProperty("socksProxyHost");
-//                System.clearProperty("socksProxyPort");
-//                System.clearProperty("java.net.useSystemProxies");
-//            }
-//        }
-//        else{
-//
-//            try{
-//                System.out.println("testing the following proxy"+proxy.toString());
-//
-//                Connection.Response response = Jsoup.connect("https://en.wikipedia.org/")
-//                        .proxy(proxy.getIp(),proxy.getPort())
-//                        .timeout(2000)
-//                        .execute();
-//                System.out.println(response.statusCode());
-//                if(response.statusCode() == 200){
-//                    System.out.println("Proxy is working "+ proxy.toString());
-//                    return true;
-//                }
-//            } catch (Exception e) {
-//
-//            }
-//        }
-//
-//        return false;
-//    }
+    public void startHealthChecker() {
+        for (int i = 0; i < NUM_TESTERS; i++) {
+            try{
+                healthChecker.scheduleWithFixedDelay(
+                        this::testUntestedProxy,
+                         1000L, // Stagger start times
+                        2000,    // Test every 2 seconds
+                        TimeUnit.MILLISECONDS
+                );
+            } catch (Exception e) {
+                System.out.println();
+            }
+        }
+    }
 
-    public boolean textProxy(Proxy proxy) throws IOException {
+    public void testUntestedProxy()  {
+        Proxy proxy = unTestedProxy.poll();
+        if(unTestedProxy.isEmpty()){
+            System.out.println("No untestedProxy available");
+
+            System.out.println(workingProxy);
+            System.out.println(workingProxy.size());
+            return;
+        }
         try{
-            System.out.println("testing the following proxy"+proxy.toString());
-            java.net.Proxy proxy1;
-            if(proxy.getProtocol().contains("socks")){
-                proxy1 = new java.net.Proxy(java.net.Proxy.Type.SOCKS,new InetSocketAddress(proxy.getIp(),proxy.getPort()));
+            if(testProxy(proxy)){
+                workingProxy.offer(proxy);
             }
             else{
-                proxy1 = new java.net.Proxy(java.net.Proxy.Type.HTTP,new InetSocketAddress(proxy.getIp(),proxy.getPort()));
+//                unTestedProxy.offer(proxy);
             }
-            Connection.Response response = Jsoup.connect("https://whoer.net/")
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public boolean testProxy(Proxy proxy)  {
+        try{
+            System.out.println("testing the following proxy "+proxy.toString());
+            java.net.Proxy proxy1;
+            proxy1 = new java.net.Proxy(java.net.Proxy.Type.HTTP,new InetSocketAddress(proxy.getIp(),proxy.getPort()));
+            String auth = proxy.username+":"+proxy.password;
+            String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
+
+            Connection.Response response = Jsoup.connect("https://en.wikipedia.org")
+//                    .auth(myAuthenticator)
+                    .header("Proxy-Authorization", "Basic " + encodedAuth)
                     .proxy(proxy1)
-                    .timeout(2000)
+                    .timeout(7500)
+                    .ignoreHttpErrors(true)
                     .execute();
             System.out.println(response.statusCode());
             if(response.statusCode() == 200){
-                Document doc = Jsoup.connect("https://whoer.net/").proxy(proxy1).get();
-                System.out.println(doc.text());
-                System.out.println("Proxy is working "+ proxy.toString());
                 return true;
             }
         } catch (Exception e) {
@@ -113,33 +99,21 @@ public class ProxyService {
         return false;
     }
 
-    public void getAllWorkingProxy() throws IOException{
-        for(int i=0;i<proxyList.size();i++){
-            Proxy proxy = proxyList.get(i);
-            if(textProxy(proxy)){
-                workingProxy.add(proxy);
-            }
-        }
-    }
     public Proxy getProxy() throws IOException {
-        if(counter == proxyList.size()-1){
-            counter = 0;
+        if(workingProxy.isEmpty()){
+            System.out.println("There is no working proxies currently available");
+            return null;
         }
-        while(counter < proxyList.size()){
-
-            Proxy proxy = proxyList.get(counter);
-            if(textProxy(proxy)){
-                return proxy;
-            }
-            counter++;
-        }
-        return null;
+        return workingProxy.poll();
     }
-    static void main() throws IOException {
+    static void main() throws InterruptedException {
+        System.setProperty("jdk.http.auth.tunneling.disabledSchemes", "");
         ProxyService proxyService = new ProxyService();
         proxyService.loadProxy();
-        proxyService.getAllWorkingProxy();
-        System.out.println(proxyService.workingProxy);
+        proxyService.startHealthChecker();
+//        Thread.sleep(30000);
+//        System.out.println(proxyService.workingProxy.toArray()+"here");
+//        System.out.println(proxyService.workingProxy);
     }
 
 }

@@ -3,12 +3,14 @@ package com.pranav;
 public class Proxy {
     public String ip;
     public Integer port;
-    public String protocol;
+    public String username;
+    public String password;
 
-    public Proxy(String ip, Integer port, String protocol) {
+    public Proxy(String ip, Integer port, String username, String password) {
         this.ip = ip;
         this.port = port;
-        this.protocol = protocol;
+        this.username = username;
+        this.password = password;
     }
 
     @Override
@@ -16,7 +18,6 @@ public class Proxy {
         return "Proxy{" +
                 "ip='" + ip + '\'' +
                 ", port=" + port +
-                ", protocol='" + protocol + '\'' +
                 '}';
     }
 
@@ -28,7 +29,13 @@ public class Proxy {
         return port;
     }
 
-    public String getProtocol() {
-        return protocol;
+
+    @Override
+    public boolean equals(Object obj) {
+        Proxy obj1 = (Proxy) obj;
+        if(this.ip.equals(obj1.ip) && this.port == obj1.port){
+            return true;
+        }
+        return false;
     }
 }

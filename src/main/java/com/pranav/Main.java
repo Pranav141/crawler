@@ -58,6 +58,17 @@ public class Main {
 //        }
 //        System.out.println(validIps);
 //        HashSet<Integer> hs = new HashSet<>();
-
+//        String s = "11";
+//        s.to
+//        int t = s.lastIndexOf('2');
+//        System.out.println(s.charAt(1) == s.charAt(0));
+//        List<String> arr = new ArrayList<>();
+//        nestedList.sort((list1, list2) -> {
+//            for (int i = 0; i < 4; i++) {
+//                int res = list1.get(i).compareTo(list2.get(i));
+//                if (res != 0) return res;
+//            }
+//            return 0;
+//        });
     }
 }
