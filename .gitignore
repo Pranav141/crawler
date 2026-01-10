@@ -38,5 +38,4 @@ build/
 ### Mac OS ###
 .DS_Store
 
-src/main/resources/all-proxies.txt
-src/main/resources/langdetect-183.bin
+src/main/resources
