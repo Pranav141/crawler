@@ -15,19 +15,31 @@ import java.util.*;
 import static com.mongodb.client.model.Filters.*;
 
 public class DBConn {
-    public static MongoClient mongoClient;
-    public static void createConn(){
+    public  MongoClient mongoClient;
+    public static DBConn instance = null;
+    public static DBConn getInstance() {
+        if(instance == null){
+            instance = new DBConn();
+        }
+        return instance;
+    }
+    private DBConn() {
+        createConn();
+    }
+
+    public  void createConn(){
         String uri = "mongodb://localhost:27017/";
         mongoClient = MongoClients.create(uri);
     }
-    public static void ingestData(Map<String,TermFrequencyValue> terms,String url,int count){
+    public  void ingestData(Map<String,TermFrequencyValue> terms,String url,String title,int count){
         MongoDatabase database = mongoClient.getDatabase("crawler");
         database.createCollection("urls");
 
         MongoCollection<Document> urlCollection = database.getCollection("urls");
         Document urlDoc = new Document()
                 .append("_id",new ObjectId())
-                        .append("url",url);
+                .append("url",url)
+                .append("title",title);
         urlCollection.insertOne(urlDoc);
         database.createCollection("indexes");
 
@@ -72,7 +84,7 @@ public class DBConn {
             }
         }
     }
-    public static Set<String> loadVisitedUrl(){
+    public Set<String> loadVisitedUrl(){
         MongoDatabase database = mongoClient.getDatabase("crawler");
         MongoCollection<Document> urls = database.getCollection("urls");
         List<Document> result = new ArrayList<>();
@@ -84,44 +96,36 @@ public class DBConn {
         return hs;
     }
     static void main() {
-        createConn();
-        MongoDatabase database = mongoClient.getDatabase("crawler");
+        DBConn dbConn = DBConn.getInstance();
+        TextProcessor textProcessor = new TextProcessor();
+        MongoDatabase database = dbConn.mongoClient.getDatabase("crawler");
         MongoCollection<Document> collection = database.getCollection("indexes");
         MongoCollection<Document> urls = database.getCollection("urls");
         long n = urls.countDocuments();
-//        List<Document> result = new ArrayList<>();
-
+        String sentence = "when was the world war and why was it?";
+        List<String> tokens = textProcessor.tokenize(sentence);
         Map<ObjectId,Double> hm = new HashMap<>();
-        String term = "softwar";
-        Document document = collection.find(eq("_id",term)).first();
-        List<Document> postings = document.get("postings",List.class);
-        for(int i=0;i<postings.size();i++){
-            Document posting = postings.get(i);
-            int tc = posting.get("tc",Integer.class);
-            int freq = posting.get("freq",Integer.class); //
-            float tf = (float)freq/tc;
-            int df = document.get("df",Integer.class);
-            double idf = Math.log((double)n/df);
-            double score = tf*idf;
-//            ObjectId id = posting.get("urlId",ObjectId.class);
-//            System.out.println(id);
-            hm.put(posting.getObjectId("urlId"),score);
+        for (int j = 0; j < tokens.size(); j++) {
+            String term = tokens.get(j);
+            System.out.println("term "+term);
+            Document document = collection.find(eq("_id",term)).first();
+            List<Document> postings = document.get("postings",List.class);
+            for(int i=0;i<postings.size();i++){
+                Document posting = postings.get(i);
+                int tc = posting.get("tc",Integer.class);
+                int freq = posting.get("freq",Integer.class); //
+                float tf = (float)freq/tc;
+                int df = document.get("df",Integer.class);
+                double idf = Math.log((double)n/df);
+                double score = tf*idf;
+//                ObjectId id = posting.get("urlId",ObjectId.class);
+    //            System.out.println(id);
+                ObjectId id = posting.getObjectId("urlId");
+                hm.put(id,hm.getOrDefault(id,0D)+score);
+            }
+
         }
 
-         term = "world";
-         document = collection.find(eq("_id",term)).first();
-         postings = document.get("postings",List.class);
-        for(int i=0;i<postings.size();i++){
-            Document posting = postings.get(i);
-            int tc = posting.get("tc",Integer.class);
-            int freq = posting.get("freq",Integer.class);
-            float tf = (float)freq/tc;
-            int df = document.get("df",Integer.class);
-            double idf = Math.log((double)n/df);
-            double score = tf*idf;
-            ObjectId id = posting.getObjectId("urlId");
-            hm.put(id,hm.getOrDefault(id,0D)+score);
-        }
         List<Map.Entry<ObjectId, Double>> ranked =
                 hm.entrySet()
                         .stream()
