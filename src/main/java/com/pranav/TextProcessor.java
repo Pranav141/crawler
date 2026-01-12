@@ -134,9 +134,13 @@ public class TextProcessor {
                 for (ConsumerRecord<String, String> record : records) {
                     // Convert JSON string back to WebData object
                     WebData data = mapper.readValue(record.value(), WebData.class);
-                    System.out.println("Title: "+data.title);
-                    System.out.println("Processing URL: " + data.url);
-                    System.out.println("Content: " + data.text.substring(1,15));
+                    System.out.printf("%s[PROCESSOR] %-12s | Title: %-40.40s | Source: %s%s%n",
+                            LogColors.PURPLE,
+                            "CONSUMER-1",
+                            data.title,
+                            data.url,
+                            LogColors.RESET
+                    );
                     process(data.text,data.url,data.title);
                 }
             }

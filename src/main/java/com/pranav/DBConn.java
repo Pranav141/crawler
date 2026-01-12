@@ -39,7 +39,8 @@ public class DBConn {
         Document urlDoc = new Document()
                 .append("_id",new ObjectId())
                 .append("url",url)
-                .append("title",title);
+                .append("title",title)
+                .append("tc",count);
         urlCollection.insertOne(urlDoc);
         database.createCollection("indexes");
 
@@ -96,48 +97,50 @@ public class DBConn {
         return hs;
     }
     static void main() {
-        DBConn dbConn = DBConn.getInstance();
-        TextProcessor textProcessor = new TextProcessor();
-        MongoDatabase database = dbConn.mongoClient.getDatabase("crawler");
-        MongoCollection<Document> collection = database.getCollection("indexes");
-        MongoCollection<Document> urls = database.getCollection("urls");
-        long n = urls.countDocuments();
-        String sentence = "when was the world war and why was it?";
-        List<String> tokens = textProcessor.tokenize(sentence);
-        Map<ObjectId,Double> hm = new HashMap<>();
-        for (int j = 0; j < tokens.size(); j++) {
-            String term = tokens.get(j);
-            System.out.println("term "+term);
-            Document document = collection.find(eq("_id",term)).first();
-            List<Document> postings = document.get("postings",List.class);
-            for(int i=0;i<postings.size();i++){
-                Document posting = postings.get(i);
-                int tc = posting.get("tc",Integer.class);
-                int freq = posting.get("freq",Integer.class); //
-                float tf = (float)freq/tc;
-                int df = document.get("df",Integer.class);
-                double idf = Math.log((double)n/df);
-                double score = tf*idf;
-//                ObjectId id = posting.get("urlId",ObjectId.class);
-    //            System.out.println(id);
-                ObjectId id = posting.getObjectId("urlId");
-                hm.put(id,hm.getOrDefault(id,0D)+score);
-            }
-
-        }
-
-        List<Map.Entry<ObjectId, Double>> ranked =
-                hm.entrySet()
-                        .stream()
-                        .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
-                        .toList();
-        System.out.println(ranked.size());
-        for (int i = 0; i < ranked.size(); i++) {
-            System.out.println(ranked.get(i).getValue());
-            System.out.println(ranked.get(i).getKey());
-
-            System.out.println(urls.find(eq("_id",ranked.get(i).getKey())).first().get("url",String.class));
-        }
+        //TF-IDF implementation
+//        DBConn dbConn = DBConn.getInstance();
+//        TextProcessor textProcessor = new TextProcessor();
+//        MongoDatabase database = dbConn.mongoClient.getDatabase("crawler");
+//        MongoCollection<Document> collection = database.getCollection("indexes");
+//        MongoCollection<Document> urls = database.getCollection("urls");
+//        long n = urls.countDocuments();
+//        String sentence = "java is the best programming language";
+//        List<String> tokens = textProcessor.tokenize(sentence);
+//        Map<ObjectId,Double> hm = new HashMap<>();
+//        for (int j = 0; j < tokens.size(); j++) {
+//            String term = tokens.get(j);
+//            System.out.println("term "+term);
+//            Document document = collection.find(eq("_id",term)).first();
+//            if (document == null) continue;
+//            List<Document> postings = document.get("postings",List.class);
+//            for(int i=0;i<postings.size();i++){
+//                Document posting = postings.get(i);
+//                int tc = posting.get("tc",Integer.class); // total terms in the document
+//                int freq = posting.get("freq",Integer.class); // frequency of a particular term in a document
+//                float tf = (float)freq/tc; // avg of terms found in the document.
+//                int df = document.get("df",Integer.class); // total documents containing the terms
+//                double idf = Math.log((double)n/df); //log(total no. of documents/total documents containing the terms)
+//                double score = tf*idf;
+////                ObjectId id = posting.get("urlId",ObjectId.class);
+//    //            System.out.println(id);
+//                ObjectId id = posting.getObjectId("urlId");
+//                hm.put(id,hm.getOrDefault(id,0D)+score);
+//            }
+//
+//        }
+//
+//        List<Map.Entry<ObjectId, Double>> ranked =
+//                hm.entrySet()
+//                        .stream()
+//                        .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
+//                        .toList();
+//        System.out.println(ranked.size());
+//        for (int i = 0; i < ranked.size(); i++) {
+//            System.out.println(ranked.get(i).getValue());
+//            System.out.println(ranked.get(i).getKey());
+//
+//            System.out.println(urls.find(eq("_id",ranked.get(i).getKey())).first().get("url",String.class));
+//        }
     }
 
 

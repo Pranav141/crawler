@@ -7,6 +7,8 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -18,6 +20,7 @@ public class CrawlerService {
     public KafkaProducer<String, String> producer;
     public BlockingQueue<String> waitingUrl;
     public Set<String> alreadyVisitedLinks;
+    public Set<String> discoveredLinks;
     public Map<String,Rules> robotRules;
     public int NUM_CRAWLERS = 5;
     public ExecutorService es = Executors.newFixedThreadPool(NUM_CRAWLERS);
@@ -25,6 +28,7 @@ public class CrawlerService {
     public CrawlerService() {
         waitingUrl = new LinkedBlockingQueue<>();
         alreadyVisitedLinks = ConcurrentHashMap.newKeySet();
+        discoveredLinks = ConcurrentHashMap.newKeySet();
         proxyService = new ProxyService();
         robotRules = new HashMap<>();
     }
@@ -67,7 +71,10 @@ public class CrawlerService {
         alreadyVisitedLinks = conn.loadVisitedUrl();
     }
     public boolean contains(String url){
-        return alreadyVisitedLinks.contains(url);
+        if(alreadyVisitedLinks.contains(url) || discoveredLinks.contains(url)){
+            return true;
+        }
+        return false;
     }
     public boolean isAllowed(String path) {
 
@@ -99,48 +106,61 @@ public class CrawlerService {
         return allow;
     }
 
-
-
     public void stopExecutor(ExecutorService executor) {
         // 1. Stop accepting new tasks
+        System.out.printf("%n%s[SHUTDOWN]  %-15s | Signal sent to ExecutorService.%s%n",
+                LogColors.PURPLE, "CORE", LogColors.RESET);
         executor.shutdown();
 
         try {
+            System.out.printf("%s[SHUTDOWN]  %-15s | Waiting 1s for threads to exit gracefully...%s%n",
+                    LogColors.PURPLE, "CORE", LogColors.RESET);
             // 2. Wait a while for existing tasks to terminate
-            if (!executor.awaitTermination(1500, TimeUnit.MILLISECONDS)) {
+            if (!executor.awaitTermination(1000, TimeUnit.MILLISECONDS)) {
+
+                System.out.printf("%s[SHUTDOWN]  %-15s | Time limit reached. Forcing immediate stop!%s%n",
+                        LogColors.RED, "CORE", LogColors.RESET);
                 // 3. Force shutdown if they didn't finish in time
                 executor.shutdownNow();
 
                 // 4. Wait a bit more for tasks to respond to the interrupt
                 if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                    System.err.println("Executor did not terminate.");
+                    System.err.println("[CRITICAL] Executor did not terminate.");
                 }
             }
         } catch (InterruptedException ie) {
             // 5. (Re-)Cancel if current thread also interrupted
+            System.out.printf("%s[SHUTDOWN]  %-15s | Interrupted during wait. Forcing shutdown.%s%n",
+                    LogColors.RED, "CORE", LogColors.RESET);
             executor.shutdownNow();
-            Thread.currentThread().interrupt();
         }
     }
 
 
     public void startCrawling() throws InterruptedException{
-        waitingUrl.add("https://en.wikipedia.org/wiki/Computer_Science");
-        waitingUrl.add("https://en.wikipedia.org/wiki/History");
-        waitingUrl.add("https://en.wikipedia.org/wiki/Biology");
-        waitingUrl.add("https://en.wikipedia.org/wiki/Mathematics");
-        waitingUrl.add("https://en.wikipedia.org/wiki/Literature");
+        waitingUrl.add("https://en.wikipedia.org/wiki/computer_science");
+        waitingUrl.add("https://en.wikipedia.org/wiki/history");
+        waitingUrl.add("https://en.wikipedia.org/wiki/biology");
+        waitingUrl.add("https://en.wikipedia.org/wiki/mathematics");
+        waitingUrl.add("https://en.wikipedia.org/wiki/literature");
+
+        discoveredLinks.add("https://en.wikipedia.org/wiki/computer_science");
+        discoveredLinks.add("https://en.wikipedia.org/wiki/history");
+        discoveredLinks.add("https://en.wikipedia.org/wiki/biology");
+        discoveredLinks.add("https://en.wikipedia.org/wiki/mathematics");
+        discoveredLinks.add("https://en.wikipedia.org/wiki/literature");
+
 
         for(int i = 0;i<NUM_CRAWLERS;i++){
             es.submit(new Crawler(this));
         }
         Thread.sleep(5000);
-        while(alreadyVisitedLinks.size() < 50){
-            System.out.println(alreadyVisitedLinks.size() + "size of the hashset");
+        while(alreadyVisitedLinks.size() < 10){
+//            System.out.println(alreadyVisitedLinks.size() + "size of the hashset");
             Thread.sleep(500);
         }
-        stopExecutor(es);
         proxyService.stopHealthChecker();
+        stopExecutor(es);
 
     }
 
@@ -151,6 +171,7 @@ public class CrawlerService {
         return waitingUrl.poll();
     }
     public void addUrl(String url) throws InterruptedException {
+        discoveredLinks.add(url.toLowerCase());
         waitingUrl.put(url);
     }
 
@@ -192,7 +213,7 @@ public class CrawlerService {
 
             producer.send(new ProducerRecord<>(topic, jsonValue), (metadata, exception) -> {
                 if (exception == null) {
-                    System.out.println("title " + title );
+//                    System.out.println("title " + title );
                 } else {
                     exception.printStackTrace();
                 }
@@ -205,14 +226,22 @@ public class CrawlerService {
 
     static void main() throws IOException, InterruptedException {
         CrawlerService cs = new CrawlerService();
+
+        Instant start = Instant.now();
         cs.proxyService.startProxyService();
         cs.setKafkaProperties();
         Thread.sleep(1000);
         cs.setRobotsText("https://en.wikipedia.org/");
         Thread.sleep(5000);
         cs.startCrawling();
-//        System.out.println(cs.waitingUrl);
         System.out.println(cs.alreadyVisitedLinks.size());
+        Instant end = Instant.now();
+        Duration timeElapsed = Duration.between(start, end);
         cs.closeKafka();
+        System.out.printf("%s[STATS]    %-15s | %-12s : %d sec%s%n",
+                LogColors.BLUE, "CRAWLER SYSTEM", "Elapsed", timeElapsed.toSeconds(), LogColors.RESET);
+
+        System.out.printf("%s[STATS]    %-15s | %-12s : %d links%s%n",
+                LogColors.BLUE, "CRAWLER SYSTEM", "Total Visited", cs.alreadyVisitedLinks.size(), LogColors.RESET);
     }
 }

@@ -36,6 +36,10 @@ public class Crawler implements Runnable{
     public CrawlerService crawlerService;
     public Proxy proxy;
     public int count;
+    public static final String ANSI_CYAN = "\u001B[36m";
+    public static final String ANSI_RESET = "\u001B[0m";
+    public static final String ANSI_YELLOW = "\u001B[33m";
+    public static final String ANSI_GREEN = "\u001B[32m";
     public Crawler(CrawlerService crawlerService) {
         this.crawlerService = crawlerService;
     }
@@ -71,14 +75,25 @@ public class Crawler implements Runnable{
                 throw new RuntimeException(e);
             }
         }
-        while(!crawlerService.isEmpty()){
-            if(count >= 5){
+        while(!crawlerService.isEmpty()){ //check queue is empty or not
+            if(count >= 5){ // proxy rotation after hitting 5 urls using a proxy
                 crawlerService.returnProxy(proxy,true);
-                System.out.println("Proxy rotation taking place" + Thread.currentThread().getName() + " returned proxy "+proxy.ip+" count "+ count);
+                System.out.printf("%s[ROTATE]   %-15s | Returned: %-15s | Hits: %d%s%n",
+                        LogColors.YELLOW,
+                        Thread.currentThread().getName().toUpperCase(),
+                        proxy.getIp(),
+                        count,
+                        LogColors.RESET
+                );
                 try {
                     proxy = crawlerService.getProxy();
                     count = 0;
-                    System.out.println(Thread.currentThread().getName() + " is the new proxy " + proxy.ip + " count " + count);
+                    System.out.printf("%s[ACQUIRE]  %-15s | New Proxy: %-15s | Status: READY%s%n",
+                            LogColors.GREEN,
+                            Thread.currentThread().getName().toUpperCase(),
+                            proxy.getIp(),
+                            LogColors.RESET
+                    );
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
@@ -96,41 +111,63 @@ public class Crawler implements Runnable{
                         .header("Proxy-Authorization", "Basic " + encodedAuth)
                         .timeout(5000) // 5 seconds
                         .get();
+                System.out.printf(ANSI_CYAN + "[CRAWL]    %-15s | %-15s | %s" + ANSI_RESET + "%n",
+                        Thread.currentThread().getName().toUpperCase(),
+                        proxy.getIp(),
+                        url
+                );
                 count++;
-                crawlerService.alreadyVisitedLinks.add(url);
-                System.out.println();
-
+                crawlerService.alreadyVisitedLinks.add(url); //adding to the set that have already been visited
                 // SUCCESS: Process your wiki page
 
             } catch (HttpStatusException e) {
                 // CASE: TARGET URL ISSUE
                 // The proxy worked fine, but the website said "No" (404, 403, 500)
-                System.err.println("Target Site Error: " + e.getStatusCode() + " for URL: " + e.getUrl());
-                // Strategy: Don't blame the proxy. Just stop trying this specific URL.
+                System.out.printf("%s[SITE_ERR]  %-15s | Status: %d | URL: %s%s%n",
+                        LogColors.YELLOW,
+                        Thread.currentThread().getName().toUpperCase(),
+                        e.getStatusCode(),
+                        e.getUrl(),
+                        LogColors.RESET
+                );                // Strategy: Don't blame the proxy. Just stop trying this specific URL.
+//                continue;
 
             } catch (ConnectException | SocketTimeoutException e) {
                 // CASE: PROXY ISSUE
                 // The code couldn't even "reach" the server.
-                System.err.println("Proxy Failure: " + e.getMessage() + Thread.currentThread().getName());
-                crawlerService.returnProxy(proxy,false);
+                System.out.printf("%s[PROXY_FAIL] %-15s | Reason: %-20s | Action: REPLACING%s%n",
+                        LogColors.RED_BOLD,
+                        Thread.currentThread().getName().toUpperCase(),
+                        e.getMessage(),
+                        LogColors.RESET
+                );
                 // Strategy: Mark this proxy as "dead" and ask the service for a new one.
                 crawlerService.returnProxy(proxy,false);
 
             } catch (IOException e) {
                 // CASE: GENERAL ISSUE
                 if (e.getMessage().contains("407")) {
-                    System.err.println("Proxy Auth Failed: Check your username/password.");
+                    System.out.printf("%s[AUTH_FAIL] %-15s | Message: PROXY AUTHENTICATION REQUIRED (407) | Action: CHECK CREDENTIALS%s%n",
+                            LogColors.RED_BOLD,
+                            Thread.currentThread().getName().toUpperCase(),
+                            LogColors.RESET
+                    );
                 } else {
-                    System.err.println("Unknown Error: " + e.getMessage());
+
+                    System.out.printf("%s[ERROR]     %-15s | Unexpected Error: %-30s | Status: THREAD INTERRUPTED%s%n",
+                            LogColors.RED_BOLD,
+                            Thread.currentThread().getName().toUpperCase(),
+                            e.getMessage(),
+                            LogColors.RESET
+                    );
                 }
             }
-            System.out.println(url+" being processed by " + Thread.currentThread().getName()+" using "+proxy.getIp());
 
-            // text processing will happen and will be implemented in the future
-//            textProcessor.process(doc.body().text(),url);
-//          kafka producer
-            if(doc!=null) crawlerService.sendData(url,doc.body().text(),doc.title());
-//            int count = 0;
+            //send bodyContent to textProcessing pipeline using kafka
+            if(doc!=null) {
+                crawlerService.sendData(url.toLowerCase(),doc.getElementById("bodyContent").text(),doc.title());
+            }
+
             // -------------------------------Adding the links to the queue-----------------------------------------
             Elements links = doc.getElementsByTag("a");
 
@@ -143,7 +180,7 @@ public class Crawler implements Runnable{
                 if(shouldSkip(urlTemp)){
                     continue;
                 }
-                if(crawlerService.isAllowed(shortUrl) && urlTemp.startsWith("https://en.wikipedia.org") && !crawlerService.contains(urlTemp)){
+                if(crawlerService.isAllowed(shortUrl) && urlTemp.startsWith("https://en.wikipedia.org") && !crawlerService.contains(urlTemp.toLowerCase())){
                     try {
                         crawlerService.addUrl(urlTemp);
                     } catch (InterruptedException e) {
@@ -152,7 +189,7 @@ public class Crawler implements Runnable{
 
             }
             try {
-                Thread.sleep(1000);
+                Thread.sleep(750);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
