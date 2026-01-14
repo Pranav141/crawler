@@ -1,15 +1,10 @@
 package com.pranav;
 
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.jsoup.Connection;
 import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-import com.fasterxml.jackson.databind.ObjectMapper;
-//import javax.swing.text.Document;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.InetSocketAddress;
@@ -17,25 +12,13 @@ import java.net.SocketTimeoutException;
 import java.util.*;
 import java.util.concurrent.*;
 
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
-//crawler will crawl the websites in bfs fashion
-//the crawler thread will use the blocking queue as a reference to run until the task is not complete
-// it will internally count how many websites it has visited using the current proxy. it will visit
-//10 threads 10 proxies and 10000 websites to scrap
-//if we visited 1 website per second using one proxy then we will adhere to the robots rule and at the same time we will be using
-// proxies with rotation to be sure that i dont run out of data limit on m proxies.
-
-// crawller will be a seperate entity and crawling service will be seperate entity
-//crawller will push the links to the queue while checking the condition and making sure that visited links are not visited again.
-
-
-//bfs crawling
 public class Crawler implements Runnable{
     public CrawlerService crawlerService;
     public Proxy proxy;
     public int count;
+    public int queueCount;
     public static final String ANSI_CYAN = "\u001B[36m";
     public static final String ANSI_RESET = "\u001B[0m";
     public static final String ANSI_YELLOW = "\u001B[33m";
@@ -62,21 +45,32 @@ public class Crawler implements Runnable{
         return false;
     }
 
-//    public void crawl(String url, int depth, CrawlerService crawlerService) throws IOException {
-//
-//    }
-
     @Override
     public void run() {
-        if(proxy == null){
-            try {
-                proxy = crawlerService.getProxy();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+
+        while(!Thread.currentThread().isInterrupted()){
+            queueCount = 0;
+            //stops auto automatically when the executor service gives thread an interrupt.
+            if(proxy == null){
+                try {
+                    proxy = crawlerService.getProxy();
+                    System.out.printf("%s[ACQUIRE]  %-15s | New Proxy: %-15s | Status: READY%s%n",
+                            LogColors.GREEN,
+                            Thread.currentThread().getName().toUpperCase(),
+                            proxy.getIp(),
+                            LogColors.RESET
+                    );
+                    if(proxy == null){
+                        throw new IOException();
+                    }
+                } catch (IOException e) {
+                    System.out.println("Failed to get a Proxy when proxy is null");
+//                    throw new RuntimeException(e);
+                    continue;
+                }
             }
-        }
-        while(!crawlerService.isEmpty()){ //check queue is empty or not
-            if(count >= 5){ // proxy rotation after hitting 5 urls using a proxy
+            // proxy rotation after hitting 5 urls using a proxy
+            if(count >= 5){
                 crawlerService.returnProxy(proxy,true);
                 System.out.printf("%s[ROTATE]   %-15s | Returned: %-15s | Hits: %d%s%n",
                         LogColors.YELLOW,
@@ -95,20 +89,31 @@ public class Crawler implements Runnable{
                             LogColors.RESET
                     );
                 } catch (IOException e) {
-                    throw new RuntimeException(e);
+                    System.out.println(Thread.currentThread().getName().toUpperCase() + " Failed to get a Proxy when count exceed");
+//                    throw new RuntimeException(e);
+                    continue;
                 }
             }
-            String url = crawlerService.getUrl();
-
+            String url = null;
+            try {
+                synchronized (crawlerService){
+                    
+                    url = crawlerService.getUrl();
+                }
+            } catch (InterruptedException e) {
+                System.out.println(Thread.currentThread().getName().toUpperCase() + " Failed to get an url from the queue");
+//                throw  new RuntimeException(e);
+            }
             Document doc = null;
             try {
-                java.net.Proxy proxy1;
-                proxy1 = new java.net.Proxy(java.net.Proxy.Type.HTTP,new InetSocketAddress(proxy.getIp(),proxy.getPort()));
+                java.net.Proxy proxyObj;
+                proxyObj = new java.net.Proxy(java.net.Proxy.Type.HTTP,new InetSocketAddress(proxy.getIp(),proxy.getPort()));
                 String auth = proxy.username+":"+proxy.password;
                 String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
                 doc = Jsoup.connect(url)
-                        .proxy(proxy1)
+                        .proxy(proxyObj)
                         .header("Proxy-Authorization", "Basic " + encodedAuth)
+                        .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
                         .timeout(5000) // 5 seconds
                         .get();
                 System.out.printf(ANSI_CYAN + "[CRAWL]    %-15s | %-15s | %s" + ANSI_RESET + "%n",
@@ -130,7 +135,7 @@ public class Crawler implements Runnable{
                         e.getUrl(),
                         LogColors.RESET
                 );                // Strategy: Don't blame the proxy. Just stop trying this specific URL.
-//                continue;
+                continue;
 
             } catch (ConnectException | SocketTimeoutException e) {
                 // CASE: PROXY ISSUE
@@ -143,29 +148,43 @@ public class Crawler implements Runnable{
                 );
                 // Strategy: Mark this proxy as "dead" and ask the service for a new one.
                 crawlerService.returnProxy(proxy,false);
+                proxy = null;
+                continue;
 
             } catch (IOException e) {
-                // CASE: GENERAL ISSUE
-                if (e.getMessage().contains("407")) {
-                    System.out.printf("%s[AUTH_FAIL] %-15s | Message: PROXY AUTHENTICATION REQUIRED (407) | Action: CHECK CREDENTIALS%s%n",
-                            LogColors.RED_BOLD,
-                            Thread.currentThread().getName().toUpperCase(),
-                            LogColors.RESET
-                    );
-                } else {
+                if (Thread.currentThread().isInterrupted()) {
+                    System.out.printf("%s[SHUTDOWN]  %-15s | Stop signal detected during network call. Exiting.%s%n",
+                            LogColors.PURPLE, Thread.currentThread().getName().toUpperCase(), LogColors.RESET);
+                    return; // EXIT the run() method entirely. Do not 'continue'.
+                }
 
-                    System.out.printf("%s[ERROR]     %-15s | Unexpected Error: %-30s | Status: THREAD INTERRUPTED%s%n",
+                // IF NOT INTERRUPTED: Handle the actual network error
+                if (e instanceof SocketTimeoutException || e instanceof ConnectException) {
+                    System.out.printf("%s[PROXY_FAIL] %-15s | Reason: %-20s | Action: REPLACING%s%n",
                             LogColors.RED_BOLD,
                             Thread.currentThread().getName().toUpperCase(),
                             e.getMessage(),
                             LogColors.RESET
                     );
+                    crawlerService.returnProxy(proxy, false);
+                    proxy = null;
+                    // No 'continue' needed here if it's the end of your try block,
+                    // but it will loop back to the top of while(!isEmpty)
                 }
             }
 
+
+            if(doc==null) {
+
+                continue;
+            }
             //send bodyContent to textProcessing pipeline using kafka
-            if(doc!=null) {
+            try {
                 crawlerService.sendData(url.toLowerCase(),doc.getElementById("bodyContent").text(),doc.title());
+            }
+            catch (IllegalStateException e){
+                System.out.println(Thread.currentThread().getName().toUpperCase() + " Failed to send data to the kafka queue");
+                Thread.currentThread().interrupt();
             }
 
             // -------------------------------Adding the links to the queue-----------------------------------------
@@ -180,17 +199,25 @@ public class Crawler implements Runnable{
                 if(shouldSkip(urlTemp)){
                     continue;
                 }
-                if(crawlerService.isAllowed(shortUrl) && urlTemp.startsWith("https://en.wikipedia.org") && !crawlerService.contains(urlTemp.toLowerCase())){
-                    try {
-                        crawlerService.addUrl(urlTemp);
-                    } catch (InterruptedException e) {
+                if(queueCount > 100){
+                    break;
+                }
+                synchronized (crawlerService){
+                    if(crawlerService.isAllowed(shortUrl) && urlTemp.startsWith("https://en.wikipedia.org") && !crawlerService.contains(urlTemp.toLowerCase())){
+                        try {
+                            crawlerService.addUrl(urlTemp);
+                            queueCount++;
+                        } catch (InterruptedException e) {
+                            System.out.println(Thread.currentThread().getName().toUpperCase() + " Not able to add the url to the queue");
+                        }
                     }
                 }
 
             }
             try {
-                Thread.sleep(750);
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
+                System.out.println(Thread.currentThread().getName().toUpperCase() + " Failed to make the thread sleep for 1 seconds");
                 throw new RuntimeException(e);
             }
         }
@@ -198,4 +225,5 @@ public class Crawler implements Runnable{
 
 
 }
+
 

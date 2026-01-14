@@ -45,8 +45,8 @@ public class ProxyService {
             try{
                 healthChecker.scheduleWithFixedDelay(
                         this::testUntestedProxy,
-                         1000L, // Stagger start times
-                        2000,    // Test every 2 seconds
+                         i*270L, // Stagger start times
+                        2500,    // Test every 2 seconds
                         TimeUnit.MILLISECONDS
                 );
             } catch (Exception e) {
@@ -57,7 +57,7 @@ public class ProxyService {
 
     public void testUntestedProxy()  {
         if(unTestedProxy.isEmpty()){
-//            System.out.println("No untestedProxy available");
+//            System.out.println(Thread.currentThread().getName().toUpperCase() + " No untestedProxy available");
             return;
         }
         Proxy proxy = unTestedProxy.poll();
@@ -69,7 +69,7 @@ public class ProxyService {
 //                unTestedProxy.offer(proxy);
             }
         } catch (Exception e) {
-            throw new RuntimeException(e);
+//            throw new RuntimeException(e);
         }
     }
 

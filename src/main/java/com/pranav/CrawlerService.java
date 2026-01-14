@@ -7,6 +7,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 
 import java.io.IOException;
+import java.sql.PreparedStatement;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
@@ -23,6 +24,7 @@ public class CrawlerService {
     public Set<String> discoveredLinks;
     public Map<String,Rules> robotRules;
     public int NUM_CRAWLERS = 5;
+    public int PAGESTOCRAWL = 150;
     public ExecutorService es = Executors.newFixedThreadPool(NUM_CRAWLERS);
     public ProxyService proxyService;
     public CrawlerService() {
@@ -154,10 +156,11 @@ public class CrawlerService {
         for(int i = 0;i<NUM_CRAWLERS;i++){
             es.submit(new Crawler(this));
         }
-        Thread.sleep(5000);
-        while(alreadyVisitedLinks.size() < 10){
-//            System.out.println(alreadyVisitedLinks.size() + "size of the hashset");
-            Thread.sleep(500);
+        Thread.sleep(6000);
+
+        //while visited < size and queue is not empty
+        while(alreadyVisitedLinks.size() < PAGESTOCRAWL && !waitingUrl.isEmpty()){
+            Thread.sleep(750);
         }
         proxyService.stopHealthChecker();
         stopExecutor(es);
@@ -167,15 +170,15 @@ public class CrawlerService {
     public boolean isEmpty(){
         return waitingUrl.isEmpty();
     }
-    public String getUrl(){
-        return waitingUrl.poll();
+    public String getUrl() throws InterruptedException {
+        return waitingUrl.poll(4,TimeUnit.SECONDS);
     }
     public void addUrl(String url) throws InterruptedException {
         discoveredLinks.add(url.toLowerCase());
         waitingUrl.put(url);
     }
 
-    public void returnProxy(Proxy proxy,boolean isWorking){
+    public synchronized void returnProxy(Proxy proxy,boolean isWorking){
         if(isWorking){
             proxyService.addWorkingProxy(proxy);
         }else {
@@ -201,7 +204,7 @@ public class CrawlerService {
 
     public void sendData(String url,String message,String title){
 
-        String topic = "TEXT_PROCESSING_MOCK";
+        String topic = "TEXT_PROCESSING";
         ObjectMapper mapper = new ObjectMapper();
 //        String message = "Hello from Java!";
         try {
@@ -234,14 +237,17 @@ public class CrawlerService {
         cs.setRobotsText("https://en.wikipedia.org/");
         Thread.sleep(5000);
         cs.startCrawling();
-        System.out.println(cs.alreadyVisitedLinks.size());
+//        System.out.println(cs.alreadyVisitedLinks.size());
         Instant end = Instant.now();
         Duration timeElapsed = Duration.between(start, end);
+        Thread.sleep(5000);
         cs.closeKafka();
         System.out.printf("%s[STATS]    %-15s | %-12s : %d sec%s%n",
                 LogColors.BLUE, "CRAWLER SYSTEM", "Elapsed", timeElapsed.toSeconds(), LogColors.RESET);
 
         System.out.printf("%s[STATS]    %-15s | %-12s : %d links%s%n",
                 LogColors.BLUE, "CRAWLER SYSTEM", "Total Visited", cs.alreadyVisitedLinks.size(), LogColors.RESET);
+//        System.out.println(cs.waitingUrl.size());
+
     }
 }

@@ -16,7 +16,7 @@ public class SearchDemo {
         );
 
         // Search
-        String query = "romeo and Juliet";
+        String query = "Binary search algorithm";
         List<BM25SearchEngine.SearchResult> results = searchEngine.search(query);
 
         // Display results

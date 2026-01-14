@@ -22,9 +22,9 @@ public class BM25SearchEngine {
     private static final double B = 0.75;  // Document length normalization
 
     // Boost parameters
-    private static final double PROXIMITY_WEIGHT = 0.3;   // 30% weight to proximity
-    private static final double POSITION_WEIGHT = 0.2;    // 20% weight to position
-    private static final double BM25_WEIGHT = 0.5;        // 50% weight to BM25
+    private static final double PROXIMITY_WEIGHT = 0.2;   // 20% weight to proximity
+    private static final double POSITION_WEIGHT = 0.1;    // 10% weight to position
+    private static final double BM25_WEIGHT = 0.7;        // 70% weight to BM25
 
     public BM25SearchEngine(MongoCollection<Document> collection, MongoCollection<Document> urls, TextProcessor textProcessor) {
         this.collection = collection;

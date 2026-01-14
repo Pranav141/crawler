@@ -32,7 +32,7 @@ public class DBConn {
         mongoClient = MongoClients.create(uri);
     }
     public  void ingestData(Map<String,TermFrequencyValue> terms,String url,String title,int count){
-        MongoDatabase database = mongoClient.getDatabase("crawler");
+        MongoDatabase database = mongoClient.getDatabase("crawlerDB");
         database.createCollection("urls");
 
         MongoCollection<Document> urlCollection = database.getCollection("urls");
